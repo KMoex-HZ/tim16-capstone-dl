@@ -1,1 +1,1 @@
-# Transformer Encoder atas Patch (Modul 09) - 123450019
+# CNN dari nol (Modul 05) - 123450019
