@@ -1,0 +1,20 @@
+# Rencana eksperimen tim 16: NILM Mini Pengenalan Alat Daya
+# Label: Otomatis dari perintah skrip (kolom kipas, pompa, lampu, buzzer)
+tim: 16
+judul: Sistem NILM Mini Berbasis Deep Learning untuk Pemantauan Arus Tunggal
+pembimbing: Christyan Tamaro Nadeak
+pilar: Deret Waktu
+seed: 2026
+ulangan: 15
+durasi_kondisi_detik: 30
+jeda_detik: 2
+faktor:
+  aktuator:
+    jenis: otomatis
+    taraf:
+      kipas: [0, 255]
+      pompa: [0, 255]
+      lampu: [0, 255]
+      buzzer: [0, 1]
+total_kondisi: 240
+estimasi_durasi_menit: 128
