@@ -1,0 +1,38 @@
+# Rencana eksperimen tim 16: Pengenalan alat menyala dari daya total satu titik (NILM mini)
+# Label: Otomatis: status kipas/pompa/lampu/buzzer dari perintah relay
+tim: 16
+judul: Pengenalan alat menyala dari daya total satu titik (NILM mini)
+pembimbing: Christyan Tamaro Nadeak
+pilar: Mesin dan energi
+seed: 1016
+ulangan: 15
+durasi_kondisi_detik: 30
+jeda_detik: 2
+rekam:
+  audio:
+    aktif: false
+  kamera:
+    aktif: false
+faktor:
+  kipas:
+    - 0
+    - 255
+  pompa:
+    - 0
+    - 255
+  lampu:
+    - 0
+    - 255
+  buzzer:
+    - 0
+    - 1
+metode:
+  jenis_tugas: Klasifikasi multi-label 4 alat
+  masukan_model: Arus total 200 Hz, jendela 2 s
+  metrik_utama: F1 per alat
+  jalur:
+    - CNN
+    - RNN
+    - Transformer
+    - AE
+  pembanding_non_dl: Fitur statistik + FFT (RMS, puncak, kurtosis, energi pita) + Random Forest
