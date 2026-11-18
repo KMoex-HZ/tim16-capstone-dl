@@ -1,5 +1,8 @@
 {
-  "sumber": "https://… (tautan dataset dari kartu Kasus tim di Workbench)",
-  "berkas": ["data/latih.csv"],
-  "catatan": "Isi pada Sprint 0: versi/tanggal unduh, jumlah baris, dan perubahan (bila ada). Berkas data sendiri tidak di-commit."
+  "sumber": "Rekaman Meja 5 Volt Tim 16 (17 Nov 2026, sesi 15.35 dan lanjutan 18.27)",
+  "berkas": [
+    "data/daya.csv",
+    "data/label.csv"
+  ],
+  "catatan": "Gabungan 180 kondisi (15 ulangan) rekaman meja 17 Nov 2026. Kondisi 26-47 dengan sampel < 400 titik otomatis dilewati saat pemotongan jendela."
 }
