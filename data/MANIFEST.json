@@ -1,8 +1,28 @@
 {
-  "sumber": "Rekaman Meja 5 Volt Tim 16 (17 Nov 2026, sesi 15.35 dan lanjutan 18.27)",
-  "berkas": [
-    "data/daya.csv",
-    "data/label.csv"
+  "sumber": "Kartu Data meja di Papan Tim Workbench: arsip tim16_sesi-20261117-182740",
+  "sesi": [
+    "sesi-20261117-153501",
+    "sesi-20261117-182740"
   ],
-  "catatan": "Gabungan 180 kondisi (15 ulangan) rekaman meja 17 Nov 2026. Kondisi 26-47 dengan sampel < 400 titik otomatis dilewati saat pemotongan jendela."
+  "berkas": [
+    "data/sesi-20261117-153501/aktuator.csv",
+    "data/sesi-20261117-153501/daya.csv",
+    "data/sesi-20261117-153501/label.csv",
+    "data/sesi-20261117-153501/rencana.yaml",
+    "data/sesi-20261117-182740/aktuator.csv",
+    "data/sesi-20261117-182740/daya.csv",
+    "data/sesi-20261117-182740/label.csv",
+    "data/sesi-20261117-182740/rencana.yaml"
+  ],
+  "sha256": {
+    "data/sesi-20261117-153501/aktuator.csv": "7da7b7a78be01818643fc97e3f7e01748fb5e9ff547e70eba36c04fc142c500b",
+    "data/sesi-20261117-153501/daya.csv": "52f29740676c1a58ea77f669b98a3a3c2ca3a26409e40b2c51f7c996cbffd0d9",
+    "data/sesi-20261117-153501/label.csv": "1b6b1e8ba29813edb69cd9f68e347560b06e8b07077d294ea0086f6a415f7443",
+    "data/sesi-20261117-153501/rencana.yaml": "e3d91da395a516ede06014ec84448fe143b1548690270794955fc886b72457eb",
+    "data/sesi-20261117-182740/aktuator.csv": "8fc5ca8e956e01de7140e4346d021c4270c4f84af4a38e6aede12a751b76c0a1",
+    "data/sesi-20261117-182740/daya.csv": "e25a98b1715c31343180592a25f23187bbc34e07a0527addb9a96c45894037f3",
+    "data/sesi-20261117-182740/label.csv": "7a39ebead761cc0224d5a8485f9b5860da3c78fe80aeca827b2b9c5bca5e6f9c",
+    "data/sesi-20261117-182740/rencana.yaml": "ae20c3bee5ea41f38da7dbd6d5894d937a5bdf43d7905a606009efebbe2dbe79"
+  },
+  "catatan": "4 berkas dari sesi-20261117-153501 dan 4 berkas dari sesi-20261117-182740 hasil pengambilan data meja 17 Nov 2026."
 }
