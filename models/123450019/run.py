@@ -1,10 +1,11 @@
-"""Kerangka run.py anggota. Salin folder ini menjadi models/<nim>/ lalu isi bagian MODEL.
+"""Jalur CNN 1D (cnn) — 123450019.
 
-    python models/<nim>/run.py --seed 1 [--final]
+    python models/123450019/run.py --seed 1 [--final]
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import subprocess
 import sys
 import time
@@ -14,35 +15,125 @@ import numpy as np
 
 AKAR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(AKAR))
-from src.protokol import data  # noqa: E402  (protokol tim yang dibekukan)
+from src.protokol import data  # noqa: E402
 
-NIM = Path(__file__).resolve().parent.name     # nama folder = NIM
-JALUR = "cnn"                                   # cnn | tl | rnn | trf | ae
+NIM = Path(__file__).resolve().parent.name     # 123450019
+JALUR = "cnn"                                   # jalur CNN
 
 
 def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:
-    """Kembalikan (pred_val, pred_test|None). Ganti isi fungsi ini dengan model Anda."""
+    """Melatih CNN 1D pada deret tegangan rel bus_mV (1, 400)."""
     import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    from torch.utils.data import DataLoader, TensorDataset
 
     torch.manual_seed(seed)
     np.random.seed(seed)
-    Xtr, ytr, Xva, _, Xte, _ = data.muat()
-    # ---- MODEL (contoh minimal; ganti dengan arsitektur jalur Anda) ----
-    def ke_tensor(X):
-        return torch.tensor(np.asarray(X, dtype=np.float32)).reshape(len(X), -1)
-    X, y = ke_tensor(Xtr), torch.tensor(np.asarray(ytr))
-    model = torch.nn.Sequential(torch.nn.Linear(X.shape[1], 10))
-    opt = torch.optim.SGD(model.parameters(), lr=0.01)       # tulis alasan pilihan optimizer di catatan.md
-    for _ in range(2):
-        for i in range(0, len(X), 128):
-            opt.zero_grad()
-            loss = torch.nn.functional.cross_entropy(model(X[i:i + 128]), y[i:i + 128])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    Xtr, ytr, Xva, yva, Xte, _ = data.muat()
+
+    class CNN1D(nn.Module):
+        """Empat blok konvolusi dengan kernel mengecil.
+
+        Kernel 9 di lapis pertama menangkap kemelorotan rel yang lambat saat
+        beban menyala; kernel 3 di lapis akhir menangkap riak berfrekuensi
+        tinggi dari kipas. MaxPool menyusutkan 400 -> 25, lalu rata-rata
+        global membuat keluaran tidak bergantung pada posisi kejadian di
+        dalam jendela.
+        """
+
+        def __init__(
+            self,
+            in_ch: int = 1,
+            lebar: int = 32,
+            dropout: float = 0.25,
+            num_logits: int = 5,  # 3 taraf kipas + 1 pompa + 1 lampu
+        ):
+            super().__init__()
+
+            def blok(ci: int, co: int, k: int) -> nn.Sequential:
+                return nn.Sequential(
+                    nn.Conv1d(ci, co, kernel_size=k, padding=k // 2, bias=False),
+                    nn.BatchNorm1d(co),
+                    nn.GELU(),
+                    nn.MaxPool1d(2),
+                )
+
+            self.tubuh = nn.Sequential(
+                blok(in_ch, lebar, 9),            # 400 -> 200
+                blok(lebar, lebar * 2, 7),        # 200 -> 100
+                blok(lebar * 2, lebar * 4, 5),    # 100 -> 50
+                blok(lebar * 4, lebar * 4, 3),    # 50  -> 25
+            )
+            self.kumpul = nn.AdaptiveAvgPool1d(1)
+            self.norm = nn.LayerNorm(lebar * 4)
+            self.drop = nn.Dropout(dropout)
+            self.head = nn.Linear(lebar * 4, num_logits)
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # x: (B, 1, 400) -> (B, 128, 25) -> (B, 128)
+            h = self.kumpul(self.tubuh(x)).squeeze(-1)
+            h = self.drop(self.norm(h))
+            return self.head(h)
+
+    def dekode_kode(logits: torch.Tensor) -> np.ndarray:
+        kipas = logits[:, :3].argmax(dim=1)
+        pompa = (logits[:, 3] > 0).long()
+        lampu = (logits[:, 4] > 0).long()
+        return (kipas * 4 + pompa * 2 + lampu).cpu().numpy().astype(np.int64)
+
+    model = CNN1D(in_ch=int(Xtr.shape[1])).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-2)
+    epochs = 40
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+
+    ds_train = TensorDataset(
+        torch.tensor(Xtr, dtype=torch.float32),
+        torch.tensor(ytr, dtype=torch.long),
+    )
+    loader = DataLoader(ds_train, batch_size=64, shuffle=True)
+    va_tensor = torch.tensor(Xva, dtype=torch.float32, device=device)
+
+    skor_terbaik = -1.0
+    bobot_terbaik = copy.deepcopy(model.state_dict())
+
+    for _ in range(epochs):
+        model.train()
+        for bx, by in loader:
+            bx, by = bx.to(device), by.to(device)
+            y_kipas = torch.div(by, 4, rounding_mode="floor")
+            y_biner = torch.stack([((by >> 1) & 1).float(), (by & 1).float()], dim=1)
+
+            optimizer.zero_grad()
+            out = model(bx)
+            loss = F.cross_entropy(out[:, :3], y_kipas) + F.binary_cross_entropy_with_logits(out[:, 3:], y_biner)
             loss.backward()
-            opt.step()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+        scheduler.step()
+
+        model.eval()
+        with torch.no_grad():
+            pred_va_ep = dekode_kode(model(va_tensor))
+            skor_ep = data.hitung_f1_alat(yva, pred_va_ep)["val_f1_alat"]
+            if skor_ep >= skor_terbaik:
+                skor_terbaik = skor_ep
+                bobot_terbaik = copy.deepcopy(model.state_dict())
+
+    model.load_state_dict(bobot_terbaik)
     model.eval()
     with torch.no_grad():
-        pred_val = model(ke_tensor(Xva)).argmax(1).numpy()
-        pred_test = model(ke_tensor(Xte)).argmax(1).numpy() if final and Xte is not None else None
+        pred_val = dekode_kode(model(va_tensor))
+        ringkasan = data.hitung_f1_alat(yva, pred_val)
+        print(f"F1 per alat (validasi): {ringkasan['val_f1_alat']} | Rinci: {ringkasan['val_f1_rinci']}")
+
+        pred_test = None
+        if final and Xte is not None:
+            te_tensor = torch.tensor(Xte, dtype=torch.float32, device=device)
+            pred_test = dekode_kode(model(te_tensor))
+
     return pred_val, pred_test
 
 
@@ -52,17 +143,36 @@ def main() -> None:
     ap.add_argument("--final", action="store_true", help="sprint terakhir: evaluasi data uji sekali")
     ap.add_argument("--perangkat", default="cpu laptop")
     a = ap.parse_args()
+
     t0 = time.time()
     pred_val, pred_test = latih_dan_prediksi(a.seed, a.final)
     durasi = time.time() - t0
+
     out = AKAR / "results" / NIM
     out.mkdir(parents=True, exist_ok=True)
     np.save(out / "pred_val.npy", np.asarray(pred_val))
-    perintah = [sys.executable, "-m", "src.common.evaluate", "--nim", NIM, "--model", JALUR, "--seed", str(a.seed),
-                "--pred-val", str(out / "pred_val.npy"), "--durasi", f"{durasi:.1f}", "--perangkat", a.perangkat]
+
+    perintah = [
+        sys.executable,
+        "-m",
+        "src.common.evaluate",
+        "--nim",
+        NIM,
+        "--model",
+        JALUR,
+        "--seed",
+        str(a.seed),
+        "--pred-val",
+        str(out / "pred_val.npy"),
+        "--durasi",
+        f"{durasi:.1f}",
+        "--perangkat",
+        a.perangkat,
+    ]
     if pred_test is not None:
         np.save(out / "pred_test.npy", np.asarray(pred_test))
         perintah += ["--pred-test", str(out / "pred_test.npy")]
+
     subprocess.run(perintah, check=True, cwd=AKAR)
 
 
