@@ -1,0 +1,13 @@
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\lenovo\workbench-workspace\tim16-capstone-dl
+collecting ... collected 5 items
+
+tests/test_protokol.py::test_simulasi_muat_dan_anti_kebocoran_ulangan PASSED [ 20%]
+tests/test_protokol.py::test_periksa_tidak_bocor_gagal_jika_ada_irisan PASSED [ 40%]
+tests/test_protokol.py::test_deteksi_lampu_terbalik_dan_lux_basi PASSED  [ 60%]
+tests/test_protokol.py::test_kode_label_dan_f1_alat PASSED               [ 80%]
+tests/test_protokol.py::test_data_primer_meja_valid_dan_tidak_bocor SKIPPED [100%]
+
+======================== 4 passed, 1 skipped in 2.48s =========================
