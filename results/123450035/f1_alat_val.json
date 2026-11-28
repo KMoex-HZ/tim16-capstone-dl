@@ -1,0 +1,8 @@
+{
+  "val_f1_alat": 0.8588,
+  "val_f1_rinci": {
+    "kipas": 0.9436,
+    "pompa": 0.8123,
+    "lampu": 0.8204
+  }
+}

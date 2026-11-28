@@ -1,27 +1,91 @@
 """Jalur Transformer Encoder (trf) — 123450071 (Khairunnisa Maharani).
 
     python models/123450071/run.py --seed 1 [--final]
+    python models/123450071/run.py --seed 1 --simulasi
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import csv
+import json
 import subprocess
 import sys
+import tempfile
 import time
+from itertools import product
 from pathlib import Path
 
 import numpy as np
 
 AKAR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(AKAR))
+from src.common import evaluate  # noqa: E402
 from src.protokol import data  # noqa: E402
 
 NIM = Path(__file__).resolve().parent.name     # 123450071
 JALUR = "trf"                                   # jalur Transformer
 
 
-def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:
+def _buat_folder_simulasi(folder: Path, n_ulangan: int = 15) -> Path:
+    """Bangkitkan sesi simulasi sementara (15 ulangan x 12 kombinasi @ 200 Hz)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(16)
+    t_sekarang = 1000.0
+    durasi = 6.0
+    jeda = 1.0
+
+    baris_label, baris_aktuator, baris_daya = [], [], []
+    kombinasi = list(product([0, 128, 255], [0, 255], [0, 255]))
+    no = 0
+    for ulangan in range(1, n_ulangan + 1):
+        for kipas, pompa, lampu in kombinasi:
+            no += 1
+            t_mulai, t_selesai = t_sekarang, t_sekarang + durasi
+            baris_label.append({
+                "no": no,
+                "ulangan": ulangan,
+                "kipas": kipas,
+                "pompa": pompa,
+                "lampu": lampu,
+                "lux": 60.0 if lampu > 0 else 230.0,
+                "t_mulai_host": f"{t_mulai:.4f}",
+                "t_selesai_host": f"{t_selesai:.4f}",
+            })
+            baris_aktuator.extend([
+                {"t_host": f"{t_mulai:.4f}", "nama": "kipas", "nilai": kipas},
+                {"t_host": f"{t_mulai:.4f}", "nama": "pompa", "nilai": pompa},
+                {"t_host": f"{t_mulai:.4f}", "nama": "lampu", "nilai": 1 if lampu > 0 else 0},
+            ])
+            n_sampel = int(durasi * data.LAJU_HZ) + 20
+            beban = (kipas / 255.0) * 120.0 + (pompa > 0) * 180.0 + (lampu == 0) * 90.0
+            for k in range(n_sampel):
+                th = t_mulai + k / data.LAJU_HZ
+                te_ms = (th - 1000.0) * 1000.0
+                v = 5000.0 - beban + float(rng.normal(0.0, 2.0))
+                baris_daya.append([f"{th:.4f}", f"{te_ms:.2f}", "kipas", "0.0", f"{v:.2f}"])
+            t_sekarang = t_selesai + jeda
+
+    with (folder / "label.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(baris_label[0].keys()))
+        w.writeheader()
+        w.writerows(baris_label)
+    with (folder / "aktuator.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["t_host", "nama", "nilai"])
+        w.writeheader()
+        w.writerows(baris_aktuator)
+    with (folder / "daya.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["t_host", "t_esp_ms", "kanal", "arus_mA", "bus_mV"])
+        w.writerows(baris_daya)
+    return folder
+
+
+def latih_dan_prediksi(
+    seed: int,
+    final: bool,
+    folder_sesi: list[Path] | None = None,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
     """Melatih Transformer Encoder 1D pada deret tegangan rel bus_mV (1, 400)."""
     import torch
     import torch.nn as nn
@@ -32,7 +96,7 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
     np.random.seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    Xtr, ytr, Xva, yva, Xte, _ = data.muat()
+    Xtr, ytr, Xva, yva, Xte, _ = data.muat(folder_sesi=folder_sesi)
 
     class TimeSeriesTransformer(nn.Module):
         def __init__(
@@ -96,6 +160,13 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
     loader = DataLoader(ds_train, batch_size=64, shuffle=True)
     va_tensor = torch.tensor(Xva, dtype=torch.float32, device=device)
 
+    with torch.no_grad():
+        contoh_logit = model(va_tensor[:2])
+    print(
+        f"[Transformer] Masukan: X_train={Xtr.shape}, X_val={Xva.shape} (bus_mV 1x400) | "
+        f"Keluaran logit: {tuple(contoh_logit.shape)} (3 taraf kipas + 1 pompa + 1 lampu -> kode 0..11)"
+    )
+
     skor_terbaik = -1.0
     bobot_terbaik = copy.deepcopy(model.state_dict())
 
@@ -127,25 +198,42 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
     with torch.no_grad():
         pred_val = dekode_kode(model(va_tensor))
         ringkasan = data.hitung_f1_alat(yva, pred_val)
-        print(f"F1 per alat (validasi): {ringkasan['val_f1_alat']} | Rinci: {ringkasan['val_f1_rinci']}")
+        print(
+            f"[Transformer] pred_val={pred_val.shape} | "
+            f"F1 per alat (validasi): {ringkasan['val_f1_alat']} | Rinci: {ringkasan['val_f1_rinci']}"
+        )
 
         pred_test = None
         if final and Xte is not None:
             te_tensor = torch.tensor(Xte, dtype=torch.float32, device=device)
             pred_test = dekode_kode(model(te_tensor))
 
-    return pred_val, pred_test
+    return pred_val, pred_test, yva
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--final", action="store_true", help="sprint terakhir: evaluasi data uji sekali")
+    ap.add_argument("--simulasi", action="store_true", help="uji kerangka pada sesi simulasi sementara")
     ap.add_argument("--perangkat", default="cpu laptop")
     a = ap.parse_args()
 
+    if a.simulasi:
+        with tempfile.TemporaryDirectory() as tmp:
+            sim_dir = _buat_folder_simulasi(Path(tmp) / "sesi-simulasi")
+            t0 = time.time()
+            pred_val, _, yva_sim = latih_dan_prediksi(a.seed, False, folder_sesi=[sim_dir])
+            durasi = time.time() - t0
+            m_sim = evaluate.metrik_klasifikasi(yva_sim, pred_val)
+            print(
+                f"[Simulasi Selesai] durasi={durasi:.1f}s | n_val={len(yva_sim)} | "
+                f"val_acc={m_sim['acc']:.4f} | val_macro_f1={m_sim['macro_f1']:.4f}"
+            )
+        return
+
     t0 = time.time()
-    pred_val, pred_test = latih_dan_prediksi(a.seed, a.final)
+    pred_val, pred_test, _ = latih_dan_prediksi(a.seed, a.final)
     durasi = time.time() - t0
 
     out = AKAR / "results" / NIM
@@ -174,6 +262,9 @@ def main() -> None:
         perintah += ["--pred-test", str(out / "pred_test.npy")]
 
     subprocess.run(perintah, check=True, cwd=AKAR)
+
+    metrics = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
+    print("metrics.json:", json.dumps(metrics))
 
 
 if __name__ == "__main__":
