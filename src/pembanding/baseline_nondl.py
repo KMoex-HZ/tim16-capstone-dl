@@ -16,7 +16,7 @@ import numpy as np
 from scipy.stats import kurtosis, skew
 from sklearn.ensemble import RandomForestClassifier
 
-from . import manifest
+from src.common import manifest
 from src.protokol import data
 
 AKAR = manifest.AKAR
