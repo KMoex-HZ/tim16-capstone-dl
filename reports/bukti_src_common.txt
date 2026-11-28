@@ -1,9 +1,9 @@
-src/common identik dengan starter/main
-1a2
-> README.md
-1a2
-> README.md
-1a2
-> README.md
-1a2
-> README.md
+## src/common vs starter/main (e8fdb7f)
+HASIL: src/common identik dengan starter/main
+Catatan: baseline_nondl.py (PR #13) dipindah ke src/pembanding/ pada 825b0e1.
+
+## folder anggota vs models/TEMPLATE
+123450019: memuat semua berkas TEMPLATE (catatan.md run.py )+ README.md
+123450035: memuat semua berkas TEMPLATE (catatan.md run.py )+ README.md
+123450071: memuat semua berkas TEMPLATE (catatan.md run.py )+ README.md
+123450079: memuat semua berkas TEMPLATE (catatan.md run.py )+ README.md
