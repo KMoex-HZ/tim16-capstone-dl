@@ -1,7 +1,7 @@
 {
   "metrik": {
-    "val_acc": 0.802128,
-    "val_macro_f1": 0.611587
+    "val_acc": 0.734043,
+    "val_macro_f1": 0.48937
   },
   "seed": 1,
   "data_hash": "253cd7a1402639fef1ec82033dfc8a58",
@@ -9,5 +9,5 @@
   "model": "trf",
   "n_val": 470,
   "n_test": 0,
-  "durasi_detik": 67.9
+  "durasi_detik": 16.7
 }
