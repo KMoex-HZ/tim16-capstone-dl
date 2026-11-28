@@ -83,17 +83,23 @@ def koreksi_label_lampu(baris_label: list[dict]) -> list[dict]:
 
 def saring_kondisi_aktuator(folder: Path, baris_label: list[dict]) -> set[int]:
     """Kembalikan nomor kondisi yang status aktuatornya tidak sesuai perintah."""
+    baris_aktuator = _baca_csv(folder, "aktuator.csv")
+    if not baris_aktuator:
+        return set()
+
     log_aktuator = defaultdict(list)
-    for r in _baca_csv(folder, "aktuator.csv"):
+    for r in baris_aktuator:
         log_aktuator[r["nama"]].append((float(r["t_host"]), float(r["nilai"])))
 
     kondisi_tidak_sah = set()
     for b in baris_label:
         no_kondisi = int(b["no"])
+        durasi_kondisi = b["t_selesai_host"] - b["t_mulai_host"]
+        titik_cek = [j for j in TITIK_CEK_AKTUATOR if j < durasi_kondisi] or [min(1.0, durasi_kondisi / 2.0)]
         for alat in ("kipas", "pompa", "lampu"):
             waktu_log = [t for t, _ in log_aktuator[alat]]
             target_perintah = float(b["lampu_perintah"] if alat == "lampu" else b[alat])
-            for jeda in TITIK_CEK_AKTUATOR:
+            for jeda in titik_cek:
                 idx = bisect.bisect_right(waktu_log, b["t_mulai_host"] + jeda) - 1
                 if idx < 0:
                     kondisi_tidak_sah.add(no_kondisi)
@@ -112,14 +118,17 @@ def saring_kondisi_aktuator(folder: Path, baris_label: list[dict]) -> set[int]:
 
 def _baca_deret_tegangan(folder: Path) -> tuple[np.ndarray, np.ndarray]:
     """Baca sinyal bus_mV dan petakan jam ESP32 (t_esp_ms) ke waktu host."""
-    t_host, t_esp, tegangan = [], [], []
+    per_kanal: dict[str, tuple[list[float], list[float], list[float]]] = {
+        "kipas": ([], [], []),
+        "total": ([], [], []),
+    }
     with (folder / "daya.csv").open(encoding="utf-8", errors="replace") as f:
         pembaca = csv.reader(f)
         kepala = next(pembaca)
         i_kanal = kepala.index("kanal")
         i_bus = kepala.index("bus_mV")
         for r in pembaca:
-            if len(r) != len(kepala) or r[i_kanal] != "kipas":
+            if len(r) != len(kepala) or r[i_kanal] not in per_kanal:
                 continue
             try:
                 th = float(r[0])
@@ -129,10 +138,12 @@ def _baca_deret_tegangan(folder: Path) -> tuple[np.ndarray, np.ndarray]:
                 continue
             if np.isnan(v):
                 continue
-            t_host.append(th)
-            t_esp.append(te)
-            tegangan.append(v)
+            th_list, te_list, v_list = per_kanal[r[i_kanal]]
+            th_list.append(th)
+            te_list.append(te)
+            v_list.append(v)
 
+    t_host, t_esp, tegangan = per_kanal["kipas"] if per_kanal["kipas"][0] else per_kanal["total"]
     t_host_arr = np.asarray(t_host, dtype=np.float64)
     t_esp_arr = np.asarray(t_esp, dtype=np.float64)
     v_arr = np.asarray(tegangan, dtype=np.float32)
@@ -207,16 +218,20 @@ def _kunci_cache() -> str:
     return h.hexdigest()[:16]
 
 
-def _kumpulkan_jendela() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    FOLDER_CACHE.mkdir(parents=True, exist_ok=True)
-    berkas_cache = FOLDER_CACHE / f"tim16_{_kunci_cache()}.npz"
-    if berkas_cache.exists():
-        with np.load(berkas_cache) as z:
-            return z["X"], z["y"], z["ulangan"]
+def _kumpulkan_jendela(folder_sesi: list[Path] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    pakai_cache = folder_sesi is None
+    if pakai_cache:
+        FOLDER_CACHE.mkdir(parents=True, exist_ok=True)
+        berkas_cache = FOLDER_CACHE / f"tim16_{_kunci_cache()}.npz"
+        if berkas_cache.exists():
+            with np.load(berkas_cache) as z:
+                return z["X"], z["y"], z["ulangan"]
+        daftar_folder = [manifest.AKAR / "data" / s for s in SESI_AKTIF]
+    else:
+        daftar_folder = [Path(p) for p in folder_sesi]
 
     X_list, y_list, ulangan_list = [], [], []
-    for s in SESI_AKTIF:
-        folder = manifest.AKAR / "data" / s
+    for folder in daftar_folder:
         if not folder.exists():
             raise FileNotFoundError(f"Folder sesi belum ditemukan: {folder}")
         baris_label = koreksi_label_lampu(_baca_csv(folder, "label.csv"))
@@ -238,25 +253,55 @@ def _kumpulkan_jendela() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     X = np.asarray(X_list, dtype=np.float32)
     y = np.asarray(y_list, dtype=np.int64)
     ulangan = np.asarray(ulangan_list, dtype=np.int64)
-    np.savez(berkas_cache, X=X, y=y, ulangan=ulangan)
+    if pakai_cache:
+        np.savez(berkas_cache, X=X, y=y, ulangan=ulangan)
     return X, y, ulangan
 
 
-def muat(standar: bool = True):
-    """Kembalikan (X_train, y_train, X_val, y_val, X_test, y_test) dengan split per ulangan."""
-    X, y, ulangan = _kumpulkan_jendela()
-    daftar_ulangan = sorted(set(ulangan.tolist()))
+def periksa_tidak_bocor(
+    ulangan_latih: np.ndarray | list[int],
+    ulangan_val: np.ndarray | list[int],
+    ulangan_uji: np.ndarray | list[int],
+) -> None:
+    """Pastikan tidak ada satuan pemisahan (ulangan) yang muncul di dua split sekaligus."""
+    s_latih = set(np.asarray(ulangan_latih).tolist())
+    s_val = set(np.asarray(ulangan_val).tolist())
+    s_uji = set(np.asarray(ulangan_uji).tolist())
+    assert s_latih.isdisjoint(s_uji), f"Kebocoran latih & uji pada ulangan: {s_latih & s_uji}"
+    assert s_val.isdisjoint(s_uji), f"Kebocoran validasi & uji pada ulangan: {s_val & s_uji}"
+    assert s_latih.isdisjoint(s_val), f"Kebocoran latih & validasi pada ulangan: {s_latih & s_val}"
 
+
+def _bagi_ulangan(ulangan: np.ndarray) -> tuple[list[int], list[int], list[int]]:
+    daftar_ulangan = sorted(set(ulangan.tolist()))
     idx_sisa, idx_uji = split.indeks(len(daftar_ulangan), porsi_val=1 / 3)
     ulangan_uji = [daftar_ulangan[int(i)] for i in idx_uji]
     sisa_ulangan = [daftar_ulangan[int(i)] for i in idx_sisa]
 
     _, idx_val = split.indeks(len(sisa_ulangan), porsi_val=0.2)
     ulangan_val = [sisa_ulangan[int(i)] for i in idx_val]
+    ulangan_latih = [u for u in sisa_ulangan if u not in ulangan_val]
+    periksa_tidak_bocor(ulangan_latih, ulangan_val, ulangan_uji)
+    return ulangan_latih, ulangan_val, ulangan_uji
+
+
+def ringkasan_split(folder_sesi: list[Path] | None = None) -> dict[str, list[int]]:
+    """Kembalikan daftar ulangan pada masing-masing split setelah lolos uji anti-kebocoran."""
+    _, _, ulangan = _kumpulkan_jendela(folder_sesi=folder_sesi)
+    latih, val, uji = _bagi_ulangan(ulangan)
+    return {"latih": latih, "val": val, "uji": uji}
+
+
+def muat(standar: bool = True, folder_sesi: list[Path] | None = None):
+    """Kembalikan (X_train, y_train, X_val, y_val, X_test, y_test) dengan split per ulangan."""
+    X, y, ulangan = _kumpulkan_jendela(folder_sesi=folder_sesi)
+    ulangan_latih, ulangan_val, ulangan_uji = _bagi_ulangan(ulangan)
 
     mask_uji = np.isin(ulangan, ulangan_uji)
     mask_val = np.isin(ulangan, ulangan_val)
-    mask_latih = ~mask_uji & ~mask_val
+    mask_latih = np.isin(ulangan, ulangan_latih)
+
+    periksa_tidak_bocor(ulangan[mask_latih], ulangan[mask_val], ulangan[mask_uji])
 
     if standar:
         mu = X[mask_latih].mean(axis=(0, 2), keepdims=True)
@@ -275,4 +320,6 @@ def muat(standar: bool = True):
 
 if __name__ == "__main__":
     X_tr, y_tr, X_va, y_va, X_te, y_te = muat()
+    info = ringkasan_split()
     print(f"Latih: {X_tr.shape} | Validasi: {X_va.shape} | Uji: {X_te.shape} | Kelas unik: {len(set(y_tr.tolist()))}")
+    print(f"Ulangan latih: {info['latih']} | val: {info['val']} | uji: {info['uji']} | Anti-bocor: LOLOS")
