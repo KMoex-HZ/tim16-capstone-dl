@@ -1,7 +1,8 @@
 """Jalur Autoencoder (ae) - 123450079 (Hafsa Fazila Arradhi).
 
 Tahap 1: autoencoder konvolusi 1D dilatih tanpa label (rekonstruksi bus_mV).
-Tahap 2: encoder dibekukan, kepala linear dilatih pada vektor laten untuk klasifikasi 12 kelas.
+Tahap 2: encoder dilatih lanjut (fine-tuning) bersama kepala linear untuk klasifikasi 12 kelas,
+loss = klasifikasi + rekonstruksi; epoch terbaik dipilih dari val_f1_alat.
 
     python models/123450079/run.py --seed 1 [--final]
 """
@@ -86,39 +87,44 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
     ae.eval()
     print(f"MSE rekonstruksi validasi terbaik: {mse_terbaik:.4f}")
 
-    # ---- tahap 2: kepala linear di atas laten (encoder dibekukan) ----
-    with torch.no_grad():
-        Ztr, Zva = ae.enc(Xtr_t), ae.enc(Xva_t)
-        mu, sd = Ztr.mean(0, keepdim=True), Ztr.std(0, keepdim=True) + 1e-6
-        Ztr, Zva = (Ztr - mu) / sd, (Zva - mu) / sd
-    kepala = nn.Linear(Ztr.shape[1], 5).to(device)    # 3 taraf kipas + pompa + lampu
-    opt_k = torch.optim.Adam(kepala.parameters(), lr=1e-2, weight_decay=1e-4)
+    # ---- tahap 2: encoder ikut dilatih bersama kepala linear (loss klasifikasi + rekonstruksi) ----
+    kepala = nn.Linear(32, 5).to(device)              # 3 taraf kipas + pompa + lampu
+    opt2 = torch.optim.Adam(list(ae.parameters()) + list(kepala.parameters()), lr=1e-3, weight_decay=1e-4)
     y_kipas = torch.div(ytr_t, 4, rounding_mode="floor")
     y_biner = torch.stack([((ytr_t >> 1) & 1).float(), (ytr_t & 1).float()], dim=1)
-    skor_terbaik, bobot_k = -1.0, copy.deepcopy(kepala.state_dict())
-    for _ in range(300):
+    skor_terbaik = -1.0
+    bobot_terbaik = (copy.deepcopy(ae.state_dict()), copy.deepcopy(kepala.state_dict()))
+    for _ in range(60):
+        ae.train()
         kepala.train()
-        opt_k.zero_grad()
-        out = kepala(Ztr)
-        loss = F.cross_entropy(out[:, :3], y_kipas) + F.binary_cross_entropy_with_logits(out[:, 3:], y_biner)
-        loss.backward()
-        opt_k.step()
+        for i in torch.randperm(len(Xtr_t), device=device).split(batch):
+            opt2.zero_grad()
+            rec, z = ae(Xtr_t[i])
+            out = kepala(z)
+            loss = (F.cross_entropy(out[:, :3], y_kipas[i])
+                    + F.binary_cross_entropy_with_logits(out[:, 3:], y_biner[i])
+                    + F.mse_loss(rec, Xtr_t[i]))
+            loss.backward()
+            opt2.step()
+        ae.eval()
         kepala.eval()
         with torch.no_grad():
-            skor = data.hitung_f1_alat(yva, dekode_kode(kepala(Zva)))["val_f1_alat"]
+            skor = data.hitung_f1_alat(yva, dekode_kode(kepala(ae.enc(Xva_t))))["val_f1_alat"]
         if skor >= skor_terbaik:
-            skor_terbaik, bobot_k = skor, copy.deepcopy(kepala.state_dict())
-    kepala.load_state_dict(bobot_k)
+            skor_terbaik = skor
+            bobot_terbaik = (copy.deepcopy(ae.state_dict()), copy.deepcopy(kepala.state_dict()))
+    ae.load_state_dict(bobot_terbaik[0])
+    kepala.load_state_dict(bobot_terbaik[1])
+    ae.eval()
     kepala.eval()
 
     with torch.no_grad():
-        pred_val = dekode_kode(kepala(Zva))
+        pred_val = dekode_kode(kepala(ae.enc(Xva_t)))
         ringkasan = data.hitung_f1_alat(yva, pred_val)
         print(f"F1 per alat (validasi): {ringkasan['val_f1_alat']} | Rinci: {ringkasan['val_f1_rinci']}")
         pred_test = None
         if final and Xte is not None:
-            Zte = (ae.enc(torch.tensor(Xte, dtype=torch.float32, device=device)) - mu) / sd
-            pred_test = dekode_kode(kepala(Zte))
+            pred_test = dekode_kode(kepala(ae.enc(torch.tensor(Xte, dtype=torch.float32, device=device))))
     return pred_val, pred_test
 
 
