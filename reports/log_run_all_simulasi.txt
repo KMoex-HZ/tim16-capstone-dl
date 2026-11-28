@@ -1,0 +1,112 @@
+]633;E;{ echo "# Log run_all pada data simulasi - $(date '+%Y-%m-%d %H:%M')"\x3b   echo "commit: $(git rev-parse --short HEAD) (branch 123450019/init-komponen = main)"\x3b   echo "sumber data: sesi simulasi sintetik dari tests/test_protokol.py::_buat_sesi_simulasi (15 ulangan, 200 Hz)"\x3b   echo "perubahan sementara (dikembalikan setelah run):"\x3b   git diff src/protokol/data.py data/MANIFEST.json\x3b echo\x3b } > reports/log_run_all_simulasi.txt;ab3d4592-87f0-45d2-962d-61cefd56fc81]633;C# Log run_all pada data simulasi - 2026-11-28 22:50
+commit: 70058f6 (branch 123450019/init-komponen = main)
+sumber data: sesi simulasi sintetik dari tests/test_protokol.py::_buat_sesi_simulasi (15 ulangan, 200 Hz)
+perubahan sementara (dikembalikan setelah run):
+diff --git a/data/MANIFEST.json b/data/MANIFEST.json
+index d64504b..c9d4c0d 100644
+--- a/data/MANIFEST.json
++++ b/data/MANIFEST.json
+@@ -1,28 +1,17 @@
+ {
+-  "sumber": "Kartu Data meja di Papan Tim Workbench: arsip tim16_sesi-20261117-182740",
++  "sumber": "SIMULASI SEMENTARA untuk #6: tests/test_protokol.py::_buat_sesi_simulasi (15 ulangan, 200 Hz)",
+   "sesi": [
+-    "sesi-20261117-153501",
+-    "sesi-20261117-182740"
++    "sesi-simulasi"
+   ],
+   "berkas": [
+-    "data/sesi-20261117-153501/aktuator.csv",
+-    "data/sesi-20261117-153501/daya.csv",
+-    "data/sesi-20261117-153501/label.csv",
+-    "data/sesi-20261117-153501/rencana.yaml",
+-    "data/sesi-20261117-182740/aktuator.csv",
+-    "data/sesi-20261117-182740/daya.csv",
+-    "data/sesi-20261117-182740/label.csv",
+-    "data/sesi-20261117-182740/rencana.yaml"
++    "data/sesi-simulasi/aktuator.csv",
++    "data/sesi-simulasi/daya.csv",
++    "data/sesi-simulasi/label.csv"
+   ],
+   "sha256": {
+-    "data/sesi-20261117-153501/aktuator.csv": "7da7b7a78be01818643fc97e3f7e01748fb5e9ff547e70eba36c04fc142c500b",
+-    "data/sesi-20261117-153501/daya.csv": "52f29740676c1a58ea77f669b98a3a3c2ca3a26409e40b2c51f7c996cbffd0d9",
+-    "data/sesi-20261117-153501/label.csv": "1b6b1e8ba29813edb69cd9f68e347560b06e8b07077d294ea0086f6a415f7443",
+-    "data/sesi-20261117-153501/rencana.yaml": "e3d91da395a516ede06014ec84448fe143b1548690270794955fc886b72457eb",
+-    "data/sesi-20261117-182740/aktuator.csv": "8fc5ca8e956e01de7140e4346d021c4270c4f84af4a38e6aede12a751b76c0a1",
+-    "data/sesi-20261117-182740/daya.csv": "e25a98b1715c31343180592a25f23187bbc34e07a0527addb9a96c45894037f3",
+-    "data/sesi-20261117-182740/label.csv": "7a39ebead761cc0224d5a8485f9b5860da3c78fe80aeca827b2b9c5bca5e6f9c",
+-    "data/sesi-20261117-182740/rencana.yaml": "ae20c3bee5ea41f38da7dbd6d5894d937a5bdf43d7905a606009efebbe2dbe79"
++    "data/sesi-simulasi/aktuator.csv": "0808be735ec5982f117bbb747e0a43a0d38f4f599ab17b7a4fa75790f7e8e26f",
++    "data/sesi-simulasi/daya.csv": "547b453d03dc5489dc64b177329b1c70b85373b3c19f8b37c8aa0507f6b3effe",
++    "data/sesi-simulasi/label.csv": "1e5e40a07083df84af524fd0ba4c8ea41307f02c2e9af6a3c8dc8bc41c900e6f"
+   },
+-  "catatan": "4 berkas dari sesi-20261117-153501 dan 4 berkas dari sesi-20261117-182740 hasil pengambilan data meja 17 Nov 2026."
++  "catatan": "MANIFEST sementara; dikembalikan ke versi data primer setelah run."
+ }
+\ No newline at end of file
+diff --git a/src/protokol/data.py b/src/protokol/data.py
+index f938355..ca74819 100644
+--- a/src/protokol/data.py
++++ b/src/protokol/data.py
+@@ -15,7 +15,7 @@ from src.common import manifest, split
+ 
+ TUGAS = "klasifikasi"
+ TARAF_KIPAS = [0, 128, 255]
+-SESI_AKTIF = ["sesi-20261117-153501", "sesi-20261117-182740"]
++SESI_AKTIF = ["sesi-simulasi"]
+ 
+ LAJU_HZ = 200.0
+ JENDELA_DETIK = 2.0
+
+$ C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe -m src.common.baseline --seed 1
+{"val_acc": 0.166667, "val_macro_f1": 0.051587} → results\baseline\metrics.json
+$ C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\models\123450019\run.py --seed 1
+{"val_acc": 1.0, "val_macro_f1": 1.0} → results\123450019\metrics.json
+F1 per alat (validasi): 1.0 | Rinci: {'kipas': 1.0, 'pompa': 1.0, 'lampu': 1.0}
+$ C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\models\123450035\run.py --seed 1
+epoch 01/30 loss=2.3175 acc_latih=0.161 acc_val=0.167
+epoch 02/30 loss=1.9523 acc_latih=0.195 acc_val=0.167
+epoch 03/30 loss=1.8008 acc_latih=0.190 acc_val=0.167
+epoch 04/30 loss=1.6945 acc_latih=0.292 acc_val=0.427
+epoch 05/30 loss=1.5600 acc_latih=0.417 acc_val=0.500
+epoch 06/30 loss=1.4060 acc_latih=0.513 acc_val=0.667
+epoch 07/30 loss=1.1924 acc_latih=0.615 acc_val=0.615
+epoch 08/30 loss=1.0240 acc_latih=0.719 acc_val=0.833
+epoch 09/30 loss=0.8419 acc_latih=0.818 acc_val=1.000
+epoch 10/30 loss=0.6966 acc_latih=0.914 acc_val=1.000
+epoch 11/30 loss=0.5936 acc_latih=0.956 acc_val=1.000
+epoch 12/30 loss=0.4896 acc_latih=0.992 acc_val=1.000
+epoch 13/30 loss=0.4113 acc_latih=0.995 acc_val=1.000
+epoch 14/30 loss=0.3239 acc_latih=1.000 acc_val=1.000
+epoch 15/30 loss=0.2773 acc_latih=0.997 acc_val=1.000
+epoch 16/30 loss=0.2102 acc_latih=1.000 acc_val=1.000
+epoch 17/30 loss=0.1799 acc_latih=1.000 acc_val=1.000
+epoch 18/30 loss=0.1524 acc_latih=1.000 acc_val=1.000
+epoch 19/30 loss=0.1243 acc_latih=1.000 acc_val=1.000
+epoch 20/30 loss=0.1078 acc_latih=1.000 acc_val=1.000
+epoch 21/30 loss=0.0985 acc_latih=1.000 acc_val=1.000
+epoch 22/30 loss=0.0831 acc_latih=1.000 acc_val=1.000
+epoch 23/30 loss=0.0789 acc_latih=1.000 acc_val=1.000
+epoch 24/30 loss=0.0780 acc_latih=1.000 acc_val=1.000
+epoch 25/30 loss=0.0645 acc_latih=1.000 acc_val=1.000
+epoch 26/30 loss=0.0580 acc_latih=1.000 acc_val=1.000
+epoch 27/30 loss=0.0518 acc_latih=1.000 acc_val=1.000
+epoch 28/30 loss=0.0481 acc_latih=1.000 acc_val=1.000
+epoch 29/30 loss=0.0410 acc_latih=1.000 acc_val=1.000
+epoch 30/30 loss=0.0408 acc_latih=1.000 acc_val=1.000
+{"val_acc": 1.0, "val_macro_f1": 1.0} → results\123450035\metrics.json
+F1 per alat (val): {"val_f1_alat": 1.0, "val_f1_rinci": {"kipas": 1.0, "pompa": 1.0, "lampu": 1.0}}
+$ C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\models\123450071\run.py --seed 1
+C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\models\123450071\run.py:132: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+{"val_acc": 0.583333, "val_macro_f1": 0.486111} → results\123450071\metrics.json
+[Transformer] Masukan: X_train=(384, 1, 400), X_val=(96, 1, 400) (bus_mV 1x400) | Keluaran logit: (2, 5) (3 taraf kipas + 1 pompa + 1 lampu -> kode 0..11)
+[Transformer] pred_val=(96,) | F1 per alat (validasi): 0.8353 | Rinci: {'kipas': 0.7368, 'pompa': 1.0, 'lampu': 0.7692}
+metrics.json: {"metrik": {"val_acc": 0.583333, "val_macro_f1": 0.486111}, "seed": 1, "data_hash": "f7148ca3ff33da3225590b97dc6cea60", "perangkat": "cpu laptop", "model": "trf", "n_val": 96, "n_test": 0, "durasi_detik": 19.0}
+$ C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\.venv\Scripts\python.exe C:\Users\lenovo\workbench-workspace\tim16-capstone-dl\models\123450079\run.py --seed 1
+{"val_acc": 0.166667, "val_macro_f1": 0.061111} → results\123450079\metrics.json
+MSE rekonstruksi validasi terbaik: 0.0006
+F1 per alat (validasi): 0.6619 | Rinci: {'kipas': 0.41, 'pompa': 0.9091, 'lampu': 0.6667}
+tabel komparasi → reports\hasil_komparasi.md
+exit code: 0

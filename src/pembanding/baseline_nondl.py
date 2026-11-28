@@ -1,6 +1,6 @@
 """Pembanding non-DL tim: fitur statistik + FFT (RMS, puncak, kurtosis, energi pita) + Random Forest.
 
-    python -m src.common.baseline_nondl --seed 1
+    python -m src.pembanding.baseline_nondl --seed 1
 
 Memakai split dan praproses dari src.protokol (kanal tunggal bus_mV), lalu menulis
 results/baseline/metrics.json lewat src.common.evaluate (jalur yang sama dengan model anggota).
@@ -16,7 +16,7 @@ import numpy as np
 from scipy.stats import kurtosis, skew
 from sklearn.ensemble import RandomForestClassifier
 
-from . import manifest
+from src.common import manifest
 from src.protokol import data
 
 AKAR = manifest.AKAR

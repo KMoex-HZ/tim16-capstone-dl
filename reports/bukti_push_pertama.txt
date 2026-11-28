@@ -1,0 +1,4 @@
+== 123450019: 596dc8b | AnadiaCarana <anadiacarana3@gmail.com> | 2026-10-31 | Add README for Transformer Encoder module 123450019
+== 123450035: 970eda9 | fabiollacharissa <fabiollacharissaputri@gmail.com> | 2026-10-31 | Add README for RNN to LSTM/GRU module
+== 123450071: 60ac28e | Khairunnisa Maharani <khairunnisamaharaniwynterfrost@gmail.com> | 2026-10-31 | Add README for Transformer Encoder module 123450071
+== 123450079: f2f026f | hafsafazila <hafsafazila05@gmail.com> | 2026-11-01 | Create README.md
