@@ -5,27 +5,70 @@ Tahap 2: encoder dilatih lanjut (fine-tuning) bersama kepala linear untuk klasif
 loss = klasifikasi + rekonstruksi; epoch terbaik dipilih dari val_f1_alat.
 
     python models/123450079/run.py --seed 1 [--final]
+    python models/123450079/run.py --seed 1 --simulasi
 """
 from __future__ import annotations
 
 import argparse
 import copy
+import csv
 import subprocess
 import sys
+import tempfile
 import time
+from itertools import product
 from pathlib import Path
 
 import numpy as np
 
 AKAR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(AKAR))
+from src.common import evaluate  # noqa: E402
 from src.protokol import data  # noqa: E402
 
 NIM = Path(__file__).resolve().parent.name     # 123450079
 JALUR = "ae"
 
 
-def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray | None]:
+def _buat_folder_simulasi(folder: Path, n_ulangan: int = 15) -> Path:
+    """Sesi simulasi sementara: 15 ulangan x 12 kombinasi @ 200 Hz, bus_mV turun sesuai beban."""
+    folder.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(16)
+    t_sekarang, durasi, jeda = 1000.0, 6.0, 1.0
+    baris_label, baris_aktuator, baris_daya = [], [], []
+    no = 0
+    for ulangan in range(1, n_ulangan + 1):
+        for kipas, pompa, lampu in product([0, 128, 255], [0, 255], [0, 255]):
+            no += 1
+            t_mulai, t_selesai = t_sekarang, t_sekarang + durasi
+            baris_label.append({"no": no, "ulangan": ulangan, "kipas": kipas, "pompa": pompa, "lampu": lampu,
+                                "lux": 60.0 if lampu > 0 else 230.0,
+                                "t_mulai_host": f"{t_mulai:.4f}", "t_selesai_host": f"{t_selesai:.4f}"})
+            baris_aktuator.extend([
+                {"t_host": f"{t_mulai:.4f}", "nama": "kipas", "nilai": kipas},
+                {"t_host": f"{t_mulai:.4f}", "nama": "pompa", "nilai": pompa},
+                {"t_host": f"{t_mulai:.4f}", "nama": "lampu", "nilai": 1 if lampu > 0 else 0},
+            ])
+            beban = (kipas / 255.0) * 120.0 + (pompa > 0) * 180.0 + (lampu == 0) * 90.0
+            for k in range(int(durasi * data.LAJU_HZ) + 20):
+                th = t_mulai + k / data.LAJU_HZ
+                v = 5000.0 - beban + float(rng.normal(0.0, 2.0))
+                baris_daya.append([f"{th:.4f}", f"{(th - 1000.0) * 1000.0:.2f}", "kipas", "0.0", f"{v:.2f}"])
+            t_sekarang = t_selesai + jeda
+    for nama, kolom, baris in [("label.csv", list(baris_label[0].keys()), baris_label),
+                               ("aktuator.csv", ["t_host", "nama", "nilai"], baris_aktuator)]:
+        with (folder / nama).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=kolom)
+            w.writeheader()
+            w.writerows(baris)
+    with (folder / "daya.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["t_host", "t_esp_ms", "kanal", "arus_mA", "bus_mV"])
+        w.writerows(baris_daya)
+    return folder
+
+
+def latih_dan_prediksi(seed: int, final: bool, folder_sesi=None):
     import torch
     import torch.nn as nn
     import torch.nn.functional as F
@@ -34,7 +77,8 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
     np.random.seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    Xtr, ytr, Xva, yva, Xte, _ = data.muat()
+    Xtr, ytr, Xva, yva, Xte, _ = data.muat(folder_sesi=folder_sesi)
+    print(f"[AE] X_train={Xtr.shape} X_val={Xva.shape} (bus_mV, jendela 2 s) | kelas={len(set(ytr.tolist()))}")
     Xtr_t = torch.tensor(Xtr, dtype=torch.float32, device=device)
     Xva_t = torch.tensor(Xva, dtype=torch.float32, device=device)
     ytr_t = torch.tensor(ytr, dtype=torch.long, device=device)
@@ -125,17 +169,27 @@ def latih_dan_prediksi(seed: int, final: bool) -> tuple[np.ndarray, np.ndarray |
         pred_test = None
         if final and Xte is not None:
             pred_test = dekode_kode(kepala(ae.enc(torch.tensor(Xte, dtype=torch.float32, device=device))))
-    return pred_val, pred_test
+    return pred_val, pred_test, yva
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--final", action="store_true", help="sprint terakhir: evaluasi data uji sekali")
+    ap.add_argument("--simulasi", action="store_true", help="uji kerangka pada sesi simulasi sementara (tidak menulis results/)")
     ap.add_argument("--perangkat", default="cpu laptop")
     a = ap.parse_args()
+    if a.simulasi:
+        with tempfile.TemporaryDirectory() as tmp:
+            sim_dir = _buat_folder_simulasi(Path(tmp) / "sesi-simulasi")
+            t0 = time.time()
+            pred_val, _, yva_sim = latih_dan_prediksi(a.seed, False, folder_sesi=[sim_dir])
+            m = evaluate.metrik_klasifikasi(yva_sim, pred_val)
+            print(f"[Simulasi Selesai] durasi={time.time() - t0:.1f}s | n_val={len(yva_sim)} | "
+                  f"pred_val={pred_val.shape} | val_acc={m['acc']:.4f} | val_macro_f1={m['macro_f1']:.4f}")
+        return
     t0 = time.time()
-    pred_val, pred_test = latih_dan_prediksi(a.seed, a.final)
+    pred_val, pred_test, _ = latih_dan_prediksi(a.seed, a.final)
     durasi = time.time() - t0
     out = AKAR / "results" / NIM
     out.mkdir(parents=True, exist_ok=True)
